@@ -67,52 +67,60 @@ with st.sidebar:
     hf_repo = st.text_input("Hugging Face weights repo", HF_REPO_DEFAULT)
     conf = st.slider("Confidence threshold", 0.05, 0.9, 0.25, 0.05)
     show_xai = st.checkbox("Show XAI (EigenCAM) explanation", value=False)
+    nucleated_only = st.checkbox("% of nucleated cells only (exclude crystals)", value=False)
     st.markdown("---")
     st.markdown("**Mode picks the model trained on that source's images**, so the "
                 "colour/optics domain matches your upload.")
 
-up = st.file_uploader("Upload a body-fluid smear image", type=["jpg", "jpeg", "png"])
+up_files = st.file_uploader("Upload one or more body-fluid smear images (select multiple in the dialog)",
+                            type=["jpg", "jpeg", "png"], accept_multiple_files=True)
 
-if up:
-    img = Image.open(io.BytesIO(up.read())).convert("RGB")
-    col1, col2 = st.columns(2)
-    col1.subheader("Input"); col1.image(img, use_container_width=True)
-
+if up_files:
     try:
         model = load_model(hf_repo, WEIGHTS[mode])
     except Exception as e:
         st.error(f"Could not load weights from {hf_repo}. Set a valid HF repo. ({e})")
         st.stop()
 
-    res = model.predict(np.array(img), conf=conf, imgsz=640, verbose=False)[0]
-    plotted = res.plot()[:, :, ::-1]  # BGR->RGB
-    col2.subheader("Detections"); col2.image(plotted, use_container_width=True)
-
-    # differential count table (counts + %)
-    if res.boxes is not None and len(res.boxes) > 0:
-        import pandas as pd, collections
+    import pandas as pd, collections
+    agg = collections.Counter()
+    st.subheader(f"Per-image results ({len(up_files)} image(s))")
+    for f in up_files:
+        img = Image.open(io.BytesIO(f.read())).convert("RGB")
+        res = model.predict(np.array(img), conf=conf, imgsz=640, verbose=False)[0]
         names = res.names
-        counts = collections.Counter(names[int(c)] for c in res.boxes.cls.cpu().numpy())
-        total = sum(counts.values())
+        img_counts = collections.Counter()
+        if res.boxes is not None and len(res.boxes) > 0:
+            img_counts = collections.Counter(names[int(c)] for c in res.boxes.cls.cpu().numpy())
+            agg.update(img_counts)
+        with st.expander(f"{f.name} — {sum(img_counts.values())} cells detected"):
+            c1, c2 = st.columns(2)
+            c1.image(img, caption="input", use_container_width=True)
+            c2.image(res.plot()[:, :, ::-1], caption="detections", use_container_width=True)
+            if show_xai:
+                try:
+                    st.image(run_eigencam(model, img), caption="EigenCAM", use_container_width=True)
+                except Exception as e:
+                    st.warning(f"XAI unavailable: {e}")
+
+    # ---- pooled differential across ALL uploaded images ----
+    counts = dict(agg)
+    if nucleated_only:
+        counts = {k: v for k, v in counts.items() if "crystal" not in k.lower()}
+    total = sum(counts.values())
+    if total > 0:
         rows = [{"Cell type": k, "Count": v, "%": round(100 * v / total, 1)}
                 for k, v in sorted(counts.items(), key=lambda x: -x[1])]
         df = pd.DataFrame(rows)
-        st.subheader(f"Differential count — {total} cells detected")
+        st.subheader(f"Pooled differential — {total} cells across {len(up_files)} image(s)")
         st.dataframe(df, use_container_width=True, hide_index=True)
         st.download_button("Download differential (CSV)", df.to_csv(index=False),
                            file_name="differential_count.csv", mime="text/csv")
-        st.caption("Percentages are of all objects detected in this image at the current "
-                   "confidence threshold. Research/educational use — not a validated "
-                   "clinical diagnostic.")
+        st.caption("Pooled over all uploaded images at the current confidence threshold. "
+                   + ("Nucleated cells only (crystals excluded). " if nucleated_only else "")
+                   + "Research/educational use — not a validated clinical diagnostic.")
     else:
         st.info("No cells detected above the confidence threshold.")
-
-    if show_xai:
-        st.subheader("XAI — EigenCAM (where the model looked)")
-        try:
-            st.image(run_eigencam(model, img), use_container_width=True)
-        except Exception as e:
-            st.warning(f"XAI unavailable: {e}")
 else:
-    st.info("⬆️ Upload an image to begin. Use the sidebar to switch between "
+    st.info("⬆️ Upload one or more images to begin. Use the sidebar to switch between "
             "CX33 microscope and Smartphone modes.")
