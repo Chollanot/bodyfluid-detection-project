@@ -73,7 +73,7 @@ up = st.file_uploader("Upload a body-fluid smear image", type=["jpg", "jpeg", "p
 if up:
     img = Image.open(io.BytesIO(up.read())).convert("RGB")
     col1, col2 = st.columns(2)
-    col1.subheader("Input"); col1.image(img, use_column_width=True)
+    col1.subheader("Input"); col1.image(img, use_container_width=True)
 
     try:
         model = load_model(hf_repo, WEIGHTS[mode])
@@ -83,7 +83,7 @@ if up:
 
     res = model.predict(np.array(img), conf=conf, imgsz=640, verbose=False)[0]
     plotted = res.plot()[:, :, ::-1]  # BGR->RGB
-    col2.subheader("Detections"); col2.image(plotted, use_column_width=True)
+    col2.subheader("Detections"); col2.image(plotted, use_container_width=True)
 
     # detection summary table
     if res.boxes is not None and len(res.boxes) > 0:
@@ -100,7 +100,7 @@ if up:
     if show_xai:
         st.subheader("XAI — EigenCAM (where the model looked)")
         try:
-            st.image(run_eigencam(model, img), use_column_width=True)
+            st.image(run_eigencam(model, img), use_container_width=True)
         except Exception as e:
             st.warning(f"XAI unavailable: {e}")
 else:
