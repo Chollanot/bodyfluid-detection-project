@@ -88,15 +88,22 @@ if up:
     plotted = res.plot()[:, :, ::-1]  # BGR->RGB
     col2.subheader("Detections"); col2.image(plotted, use_container_width=True)
 
-    # detection summary table
+    # differential count table (counts + %)
     if res.boxes is not None and len(res.boxes) > 0:
         import pandas as pd, collections
         names = res.names
         counts = collections.Counter(names[int(c)] for c in res.boxes.cls.cpu().numpy())
-        df = pd.DataFrame(sorted(counts.items(), key=lambda x: -x[1]),
-                          columns=["Cell type", "Count"])
-        st.subheader("Cell counts")
+        total = sum(counts.values())
+        rows = [{"Cell type": k, "Count": v, "%": round(100 * v / total, 1)}
+                for k, v in sorted(counts.items(), key=lambda x: -x[1])]
+        df = pd.DataFrame(rows)
+        st.subheader(f"Differential count — {total} cells detected")
         st.dataframe(df, use_container_width=True, hide_index=True)
+        st.download_button("Download differential (CSV)", df.to_csv(index=False),
+                           file_name="differential_count.csv", mime="text/csv")
+        st.caption("Percentages are of all objects detected in this image at the current "
+                   "confidence threshold. Research/educational use — not a validated "
+                   "clinical diagnostic.")
     else:
         st.info("No cells detected above the confidence threshold.")
 
