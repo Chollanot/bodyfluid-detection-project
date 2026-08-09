@@ -41,15 +41,18 @@ def load_model(hf_repo: str, weight_path: str):
 
 
 def run_eigencam(model, pil_img, imgsz=640):
-    import cv2
+    import cv2, torch
     from pytorch_grad_cam import EigenCAM
     from pytorch_grad_cam.utils.image import show_cam_on_image
-    import torch
+    from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
+    tm = model.model.eval()
+    device = next(tm.parameters()).device
     rgb = np.float32(np.array(pil_img.convert("RGB").resize((imgsz, imgsz)))) / 255.0
-    tensor = torch.from_numpy(rgb).permute(2, 0, 1).unsqueeze(0)
-    layers = [list(model.model.model)[-2]]
-    cam = EigenCAM(model=model.model, target_layers=layers)
-    gray = cam(input_tensor=tensor)[0]
+    tensor = torch.from_numpy(rgb).permute(2, 0, 1).unsqueeze(0).to(device)
+    layers = [list(tm.model)[-2]]
+    cam = EigenCAM(model=tm, target_layers=layers)
+    # YOLO returns a tuple, so pass a dummy target to skip BaseCAM's argmax-on-output
+    gray = cam(input_tensor=tensor, targets=[ClassifierOutputTarget(0)])[0]
     return show_cam_on_image(rgb, gray, use_rgb=True)
 
 
