@@ -93,7 +93,7 @@ if up_files:
         if res.boxes is not None and len(res.boxes) > 0:
             img_counts = collections.Counter(names[int(c)] for c in res.boxes.cls.cpu().numpy())
             agg.update(img_counts)
-        with st.expander(f"{f.name} — {sum(img_counts.values())} cells detected"):
+        with st.expander(f"{f.name} — {sum(img_counts.values())} cells detected", expanded=True):
             c1, c2 = st.columns(2)
             c1.image(img, caption="input", use_container_width=True)
             c2.image(res.plot()[:, :, ::-1], caption="detections", use_container_width=True)
